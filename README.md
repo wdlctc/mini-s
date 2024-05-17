@@ -17,7 +17,7 @@ To install and run the mini-s model, follow these steps:
 3. Navigate to the `transformers` directory:
 
    ```
-   cd transformers/
+   cd transformers_mini_s/
    ```
 
 4. Install the `transformers` package in editable mode:
