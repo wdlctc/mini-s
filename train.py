@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from torch.optim import AdamW
 
+from utils import load, load_jsonl, load_data
 from datasets import load_dataset, load_from_disk
 
 from transformers import TrainingArguments, TextDataset, DataCollatorForLanguageModeling, Trainer, TrainingArguments
@@ -124,6 +125,7 @@ def main(args):
     # Load the tokenizer and pretrained model
     tokenizer = AutoTokenizer.from_pretrained("t5-base", model_max_length=args.max_length)
     model_config = AutoConfig.from_pretrained(args.model_config)
+    
     model = LlamaForCausalLM(model_config)
     tokenizer.pad_token = tokenizer.eos_token
     pad_idx = tokenizer.pad_token_id
@@ -131,9 +133,10 @@ def main(args):
     # Move the model to GPU(s)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    model.gradient_checkpointing_enable()
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     
     # Instantiate the dataset
     num_samples = args.num_samples  # Number of random samples you want to generate
@@ -167,34 +170,43 @@ def main(args):
             labels = batch["input_ids"].clone()
             labels[labels == pad_idx] = -100
 
-            outputs = model(**batch, labels=labels)
-            loss = outputs.loss
+            loss = model(**batch, labels=labels).loss
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
 
             print(loss)
             if step == 100:
+                print(
+                    "Peak allocated bytes on {:4f}GB".format(
+                        torch.cuda.memory_stats(0)["allocated_bytes.all.peak"] / 2**30
+                    )
+                )
                 return
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}")
 
+    print(
+        "Peak allocated bytes on {:4f}GB".format(
+            torch.cuda.memory_stats(0)["allocated_bytes.all.peak"] / 2**30
+        )
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_config", type=str, default="configs/llama_60m.json"
+        "--model_config", type=str, default="configs/llama3_8b.json"
     )
     parser.add_argument(
         "--model_name", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=16
+        "--batch_size", type=int, default=1
     )
     parser.add_argument(
         "--num_samples", type=int, default=10
     )
     parser.add_argument(
-        "--max_length", type=int, default=512
+        "--max_length", type=int, default=4096
     )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
