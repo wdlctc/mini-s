@@ -1,4 +1,14 @@
 
+## Key Code Change
+
+The main code change for the mini-s model can be found in the following file:
+
+```
+mini-s/transformers_mini_s/src/transformers/models/llama/modeling_llama.py
+```
+
+This file contains the modifications made to the original model to create the mini-s version.
+
 ## Installation
 
 To install and run the mini-s model, follow these steps:
