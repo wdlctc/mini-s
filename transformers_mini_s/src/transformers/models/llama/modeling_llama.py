@@ -219,7 +219,7 @@ class LlamaMLP(nn.Module):
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
 
-        self.pretraining_tp = 16
+        self.pretraining_tp = 8
 
     def sub_forward(self, x):
         down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -231,7 +231,11 @@ class LlamaMLP(nn.Module):
         
         bsz, q_len, _ = x.size()
 
-        x_list = x.split(q_len // self.pretraining_tp, dim=1)
+        if q_len > self.pretraining_tp:
+            x_list = x.split(q_len // self.pretraining_tp, dim=1)
+        else:
+            x_list = x.split(bsz // self.pretraining_tp, dim=0)
+            
 
         output_list = [None for _ in range(self.pretraining_tp)]
 
@@ -239,7 +243,10 @@ class LlamaMLP(nn.Module):
             output = self.sub_forward(x_list[i])
             output_list[i] = output
 
-        down_proj = torch.cat(output_list, dim=1)
+        if q_len > self.pretraining_tp:
+            down_proj = torch.cat(output_list, dim=1)
+        else:
+            down_proj = torch.cat(output_list, dim=0)
         
         # if self.config.pretraining_tp > 1:
         #     slice = self.intermediate_size // self.config.pretraining_tp
@@ -1148,111 +1155,44 @@ class LlamaModel(LlamaPreTrainedModel):
             causal_mask = AttentionMaskConverter._unmask_unattended(causal_mask, min_dtype)
 
         return causal_mask
-
-from triton import heuristics, jit
-from triton import language as tl
-from triton import next_power_of_2
-
-import triton
-
-
-
-def num_warps(N):
-    if N < 2048:
-        return 4
-    elif N < 8192:
-        return 8
-    return 16
-
-
-
-def num_warps(N):
-    if N < 2048:
-        return 4
-    elif N < 8192:
-        return 8
-    return 16
-
-def num_warps(N):
-    if N < 2048:
-        return 4
-    elif N < 8192:
-        return 8
-    return 16
-
-
-@heuristics({'num_warps': lambda nargs: num_warps(nargs['N'])})
-@heuristics({'BLOCK': lambda nargs: next_power_of_2(nargs['N'])})
-@jit
-def _forward(LOGITS, PROBS, IDX, LOSS, N, BLOCK: tl.constexpr):
-    row = tl.program_id(0)
-    cols = tl.arange(0, BLOCK)
-    idx = tl.load(IDX + row)
-    ignore_index = -100
-    # pointers to logit and probs
-    LOGITS = LOGITS + row * N + cols
-    WRIT_PROBS = PROBS + row * N + cols
-    READ_PROBS = PROBS + row * N + idx
-    # write-back negative log-probs
-    logits = tl.load(LOGITS, mask=cols < N, other=-float('inf'))
-    logits = logits.to(tl.float32)
-    logits = logits - tl.max(logits, 0)
-    probs = tl.log(tl.sum(tl.exp(logits), 0)) - logits
-
-    probs_loss = tl.log(tl.sum(tl.exp(logits), 0)) - tl.sum(tl.where(cols == idx, logits, 0.0))
-    probs_loss = tl.where(idx == ignore_index, 0.0, probs_loss)
-    # tl.store(WRIT_PROBS, probs, mask=cols < N)
-
-    # There is a bug in the compiler, which fails to insert a barrier here.
-    # We add it explicitly for now. Will be fixed soon.
-    # tl.debug_barrier()
-    # write-back loss
-    # probs_loss = tl.load(READ_PROBS)
-    # probs_loss = tl.where(idx == ignore_index, 0.0, probs_loss)
-    tl.store(LOSS + row, probs_loss)
-
-    tl.debug_barrier()
-    probs = -probs
-    probs = tl.exp(probs.to(tl.float32))
-    delta = cols == idx
-    din = (probs - delta)
-    din = tl.where(idx == ignore_index, 0.0, din)
-    tl.store(WRIT_PROBS, din, mask=cols < N)
+import torch.nn.functional as F
 
 class _cross_entropy(torch.autograd.Function):
 
     @classmethod
     def forward(cls, ctx, hidden_states, indices, weights):
-        logits = torch.matmul(hidden_states, weights.T)
-        # make sure we can use triton
-        assert (indices.dtype == torch.int64), "Indices are expected to be of type long."
-        # make kernel
-        device, dtype = logits.device, logits.dtype
-        n_cols = logits.shape[-1]
-        # run the kernel
-        result = torch.empty_like(indices, dtype=dtype, device=device)
-        neg_logprobs = torch.empty_like(logits, dtype=dtype, device=device)
-        grid = lambda opt: (logits.numel() // n_cols, )
-        _forward[grid](logits, neg_logprobs, indices, result, n_cols)
-        # save for backward
+        logits = F.linear(hidden_states, weights).float()
+        loss_fct = torch.nn.CrossEntropyLoss(reduction="sum")
+        loss_i = loss_fct(logits, indices)
 
-        grad_input = neg_logprobs @ weights
+        ignore_index = -100
+        mask = indices != ignore_index
+        reverse_mask = indices == ignore_index
+        
+        batch_size = torch.sum(indices != ignore_index)
 
+        grad_input = F.softmax(logits, dim=-1)
+        grad_input[mask, indices[mask]] -= 1
+        # grad_input[mask] /= batch_size
+        grad_input[reverse_mask] = 0
+        grad_input = grad_input.to(torch.bfloat16)
         if hasattr(weights, 'grad') and weights.grad != None:
             torch.addmm(
                     weights.grad,
-                    neg_logprobs.T,
+                    grad_input.T,
                     hidden_states,
                     out=weights.grad,
                 )
         else:
-            weights.grad = neg_logprobs.T @ hidden_states
-        weights.grad_mul = False
-        neg_logprobs = None
+            weights.grad = grad_input.T @ hidden_states
+            
+        grad_input = grad_input @ weights
 
+        weights.grad_mul = False
+        
         ctx.save_for_backward(grad_input, weights)
-        result = result.sum()
-        return result
+        
+        return loss_i
 
     @classmethod
     def backward(cls, ctx, dneg_logprobs):
@@ -1262,13 +1202,14 @@ class _cross_entropy(torch.autograd.Function):
         modified in place to become the gradient we want
         """
         # load saved tensors
-        neg_logprobs, weights = ctx.saved_tensors
+        grad_input, weights = ctx.saved_tensors
+        # dneg_logprobs = dneg_logprobs / weights.mul
         if weights.grad_mul is False:
             weights.grad *= dneg_logprobs
             weights.grad_mul = True
-        neg_logprobs *= dneg_logprobs
+        grad_input *= dneg_logprobs
         
-        return neg_logprobs, None, weights.grad
+        return grad_input, None, None
 
 
 class FusedCrossEntropyLMhead(nn.Module):
@@ -1284,8 +1225,10 @@ class FusedCrossEntropyLMhead(nn.Module):
         self.cross_entropy = _cross_entropy.apply
 
     def forward(self, hidden_states, labels):
+        ignore_index = -100
         loss = self.cross_entropy(hidden_states, labels, self.LM_head_weight)
         return loss
+
 
 class LlamaForCausalLM(LlamaPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
@@ -1322,16 +1265,22 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         bsz, q_len, hidden_size = hidden_states.size()
         tmp = q_len // self.pretraining_tp
 
+        if labels is None:
+            hidden_states = hidden_states[..., -1:, :]
+            logits = self.lm_head(hidden_states)
+            logits = logits.float()
+            return logits, None
 
         hidden_states = hidden_states[..., :-1, :]
 
         labels = labels[..., 1:].contiguous()
         labels = labels.to(hidden_states.device)
+
+        Fused = FusedCrossEntropyLMhead(self.lm_head.weight)
         
         loss = None
         for i in range(self.pretraining_tp):
 
-            Fused = FusedCrossEntropyLMhead(self.lm_head.weight)
 
             shift_hidden_states = hidden_states[..., i * tmp : (i+1)*tmp, :].contiguous()
             shift_hidden_states = shift_hidden_states.view(-1, hidden_size)
@@ -1345,10 +1294,11 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
                     loss = loss_i
                 else:
                     loss = loss + loss_i
-            # print(i, loss_i, loss, labels, hidden_states)
+            # print(i, loss_i, loss)
 
         loss = loss / torch.sum(torch.ne(labels, -100))
         return None, loss
+
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
     def forward(
@@ -1453,7 +1403,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
 
         return CausalLMOutputWithPast(
             loss=loss,
-            logits=None,
+            logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
