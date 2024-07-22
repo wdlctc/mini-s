@@ -22,13 +22,13 @@ class LlamaMLPWarpper(nn.Module):
         self,
         module,
         mini_s = 8,
-        chunk_size = 4096
+        chunk_size = 4096,
         chunk_mode = True
     ):
         super().__init__()
         self.module = module
         self.mini_s = mini_s
-        self.chunk_size = mini_s
+        self.chunk_size = chunk_size
         self.chunk_mode = chunk_mode
         
     def forward(self, x):
@@ -43,15 +43,25 @@ class LlamaMLPWarpper(nn.Module):
         x_list = list(x.split(chunk_size, dim=1))
             
 
-        output_list = [None for _ in range(self.mini_s)]
+        output_list = [None for _ in range(len(x_list))]
 
-        for i in range(self.mini_s):
+        for i in range(len(x_list)):
             output = self.module(x_list[i])
             output_list[i] = output
             
         down_proj = torch.cat(output_list, dim=1)
 
-        return down_proj
+        return down_proj  
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        # Get the state dict of the wrapped module
+        module_state_dict = self.module.state_dict(destination, prefix, keep_vars)
+        
+        # Create a new state dict without the 'module.' prefix
+        new_state_dict = {k: v for k, v in module_state_dict.items()}
+        
+        return new_state_dict
+
 
 
 import torch.nn.functional as F
@@ -258,6 +268,10 @@ class LlamaForCausalLMWarpper(nn.Module):
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs)
         
+    def save_pretrained(self, *args, **kwargs):
+        # Check if the module has a save_pretrained method
+        self.model.save_pretrained(*args, **kwargs)
+        
 class minisequence(nn.Module):
     def __init__(
         self,
@@ -295,3 +309,16 @@ class minisequence(nn.Module):
     def forward(self, *args, **kwargs):
         outputs = self.module(*args, **kwargs)
         return outputs
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        # Get the state dict of the wrapped module
+        module_state_dict = self.module.state_dict(destination, prefix, keep_vars)
+        
+        # Create a new state dict without the 'module.' prefix
+        new_state_dict = {k: v for k, v in module_state_dict.items()}
+        
+        return new_state_dict
+
+    def save_pretrained(self, *args, **kwargs):
+        # Check if the module has a save_pretrained method
+        self.module.save_pretrained(*args, **kwargs)

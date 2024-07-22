@@ -4,3 +4,4 @@ datasets
 deepspeed
 matplotlib
 accelerate
+tensorboard
