@@ -22,7 +22,7 @@ To install and run the mini-s model, follow these steps:
 1. Clone the repository:
 
    ```
-   git clone https://github.com/your-username/mini-s.git
+   git clone https://github.com/wdlctc/mini-s.git
    cd mini-s
    ```
 
@@ -47,6 +47,25 @@ To run the benchmark script and evaluate the performance of the mini-s model, us
    python benchmark_replace.py
    ```
 This file contains the modifications made to the original model to create the mini-s version.
+
+## No Code Change Run
+
+To run the original code without any modifications (sfttrainer for example), follow these steps:
+
+1. Clone the transformer-mini-s repository:
+
+   ```
+   git clone https://github.com/wdlctc/transformers.git
+   cd transformers
+   ```
+
+2. Install the transformer with mini-s:
+
+   ```
+   pip install -e .
+   ```
+
+this will execute the original benchmark script using mini-s enable.
 
 ## How It Works
 
