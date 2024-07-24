@@ -67,6 +67,9 @@ To run the original code without any modifications (sfttrainer for example), fol
 
 this will execute the original benchmark script using mini-s enable.
 
+## Example of mini-s Work with Performance/SFT Training
+For an example of mini-s model work with performance and SFT (Soft Finetuning) training, refer to the repository https://github.com/wdlctc/peft_minis.
+
 ## How It Works
 
 MST partitions input sequences and iteratively processes mini-sequences to reduce intermediate memory usage. When integrated with activation recomputation, this allows for significant memory savings in both forward and backward passes.
