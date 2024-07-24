@@ -94,7 +94,25 @@ We evaluated MST on popular models like Llama3-8B and Llama2-7B. In our experime
 
 We welcome contributions to the MST project. If you're interested in collaborating on MST research or have questions about our work, please open an issue or submit a pull request.
 
+## Citing Mini-s
+
+If you use minis in your publication, please cite it by using the following BibTeX entry.
+
+
+```BibTeX
+@misc{luo2024mst,
+      title={MINI-SEQUENCE TRANSFORMER: Optimizing Intermediate Memory for Long Sequences Training}, 
+      author={Luo, Cheng and Zhao, Jiawei and Chen, Zhuoming and Chen, Beidi and Anandkumar, Anima},
+      year={2024},
+      eprint={2407.15892},
+      archivePrefix={arXiv},
+      primaryClass={cs.DC}
+}
+```
+
 ## License
+
+MsT refers [huggingface/transformers](https://github.com/huggingface/transformers), Copyright 2018- The Hugging Face team, licensed under [Apache License](http://www.apache.org/licenses/LICENSE-2.0).
 
 This project is licensed under, MIT License.
 
