@@ -15,6 +15,10 @@ We believe that our work opens new avenues for long-sequence training of LLMs, a
 - Fully general and implementation-agnostic, supporting most parameter-efficient training methods
 - Easy to integrate into existing training frameworks with minimal code changes
 
+## NEWS
+
+Our work can be directly deployed for LLAMA 3.1, take benchmark_replace_llama3_1.py as an example to see how it works.
+
 ## Installation
 
 To install and run the mini-s model, follow these steps:
