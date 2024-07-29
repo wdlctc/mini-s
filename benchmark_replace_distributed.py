@@ -72,6 +72,11 @@ class PreprocessedIterableDataset(IterableDataset):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
+def init_random_seed(seed: int):
+
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
 
 def benchmark_dp(rank, args, world_size):
     """Benchmark a given model using a single process and multiple devices."""
@@ -81,6 +86,7 @@ def benchmark_dp(rank, args, world_size):
     )
 
     torch.cuda.set_device(rank)
+    init_random_seed(42)
     
     # Specify the pretrained model name or path
     model_name = args.model_name
@@ -104,7 +110,7 @@ def benchmark_dp(rank, args, world_size):
     
     # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
     def optimizer_hook(parameter) -> None:
-        parameter.grad = dist.all_reduce(parameter.grad)
+        dist.all_reduce(parameter.grad)
         optimizer_dict[parameter].step()
         optimizer_dict[parameter].zero_grad()
     
@@ -148,8 +154,10 @@ def benchmark_dp(rank, args, world_size):
     num_epochs = 3
     
     position_ids = torch.arange(
-        0, args.max_length * world_size, device=device
+        0, args.max_length, device=device
     ).unsqueeze(0)
+
+    chunk_size = args.max_length // world_size
     
     for epoch in range(num_epochs):
         start_time = time.time()
@@ -159,8 +167,13 @@ def benchmark_dp(rank, args, world_size):
         for batch in dataloader:
             
             batch = {k: v.to(device) for k, v in batch.items()}
-            labels = batch["input_ids"].clone()
+            
+            labels = batch["input_ids"][:, chunk_size*rank+1:chunk_size*(rank + 1)+1].clone()
             labels[labels == pad_idx] = -100
+
+            batch["input_ids"] = batch["input_ids"][:, chunk_size*rank:chunk_size*(rank + 1)]
+            batch["attention_mask"] = batch["attention_mask"][:, chunk_size*rank:chunk_size*(rank + 1)]
+            
 
             outputs = model(**batch, labels=labels, position_ids=position_ids)
             loss = outputs.loss
