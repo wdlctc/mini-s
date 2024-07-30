@@ -172,9 +172,7 @@ def benchmark_dp(rank, args, world_size):
             labels[labels == pad_idx] = -100
 
             batch["input_ids"] = batch["input_ids"][:, chunk_size*rank:chunk_size*(rank + 1)]
-            batch["attention_mask"] = batch["attention_mask"][:, chunk_size*rank:chunk_size*(rank + 1)]
             
-
             outputs = model(**batch, labels=labels, position_ids=position_ids)
             loss = outputs.loss
             loss.backward()
@@ -210,7 +208,7 @@ if __name__ == "__main__":
         "--num_samples", type=int, default=10
     )
     parser.add_argument(
-        "--max_length", type=int, default=8192
+        "--max_length", type=int, default=512
     )
     parser.add_argument("--data_root", type=str, default="data/")
     args = parser.parse_args()

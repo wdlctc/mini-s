@@ -95,7 +95,7 @@ class LlamaMLPWarpper(nn.Module):
         self,
         module,
         mini_s = 8,
-        chunk_size = 4096,
+        chunk_size = 8192,
         chunk_mode = True
     ):
         super().__init__()
@@ -214,7 +214,7 @@ class LlamaForCausalLMWarpper(nn.Module):
     def __init__(
         self,
         module,
-        mini_s = 16
+        mini_s = 1
     ):
         super().__init__()
         self.model = module.model
@@ -229,6 +229,7 @@ class LlamaForCausalLMWarpper(nn.Module):
         
     def narrow_processing(self, hidden_states, labels):
 
+        print(hidden_states[0,:,0])
         bsz, q_len, hidden_size = hidden_states.size()
         tmp = q_len // self.mini_s
 
@@ -262,9 +263,17 @@ class LlamaForCausalLMWarpper(nn.Module):
                 else:
                     loss = loss + loss_i
 
-        if torch.is_nonzero(loss):
-            loss = loss / torch.sum(torch.ne(labels, -100))
+        # if torch.is_nonzero(loss):
+        #     loss = loss / torch.sum(torch.ne(labels, -100))
 
+        print(loss, torch.sum(torch.ne(labels, -100)))
+        length = torch.sum(torch.ne(labels, -100))
+        dist.all_reduce(loss)
+        dist.all_reduce(length)
+        print(loss, length, loss / length)
+        loss = loss / length
+        print(loss)
+        exit()
 
         return None, loss
 
@@ -330,8 +339,6 @@ class LlamaForCausalLMWarpper(nn.Module):
         hidden_states = outputs[0]
 
         logits, loss = self.narrow_processing(hidden_states, labels)
-        dist.all_reduce(loss)
-        loss = loss / self.world_size
                 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -439,7 +446,6 @@ class minisequence(nn.Module):
         if is_LlamaMLP:
             module = LlamaMLPWarpper(module)
             setattr(upper_module, name, module)
-            
         if is_LlamaForCausalLM:
             module = LlamaForCausalLMWarpper(module)
             setattr(upper_module, name, module)

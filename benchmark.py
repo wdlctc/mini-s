@@ -61,7 +61,14 @@ class PreprocessedIterableDataset(IterableDataset):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
+def init_random_seed(seed: int):
+
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    
 def main(args):
+    init_random_seed(42)
     # Specify the pretrained model name or path
     model_name = args.model_name
     
@@ -175,7 +182,7 @@ if __name__ == "__main__":
         "--num_samples", type=int, default=10
     )
     parser.add_argument(
-        "--max_length", type=int, default=8192
+        "--max_length", type=int, default=160
     )
     parser.add_argument("--data_root", type=str, default="data/")
     args = parser.parse_args()

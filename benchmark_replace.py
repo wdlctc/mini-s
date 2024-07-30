@@ -67,8 +67,16 @@ class PreprocessedIterableDataset(IterableDataset):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
+def init_random_seed(seed: int):
+
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+
 
 def main(args):
+    
+    init_random_seed(42)
     # Specify the pretrained model name or path
     model_name = args.model_name
     
