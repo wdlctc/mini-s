@@ -15,6 +15,8 @@ from transformers.modeling_outputs import (
 )
 
 
+import torch.distributed as dist
+
 import transformers
 
 import torch.distributed as dist
@@ -189,6 +191,8 @@ class _cross_entropy(torch.autograd.Function):
             weights.grad *= dneg_logprobs
             weights.grad_mul = True
         grad_input *= dneg_logprobs
+
+        # dist.all_reduce(weights.grad)
         
         return grad_input, None, None
 
@@ -214,7 +218,7 @@ class LlamaForCausalLMWarpper(nn.Module):
     def __init__(
         self,
         module,
-        mini_s = 1
+        mini_s = 16
     ):
         super().__init__()
         self.model = module.model
@@ -229,7 +233,6 @@ class LlamaForCausalLMWarpper(nn.Module):
         
     def narrow_processing(self, hidden_states, labels):
 
-        print(hidden_states[0,:,0])
         bsz, q_len, hidden_size = hidden_states.size()
         tmp = q_len // self.mini_s
 
@@ -245,7 +248,7 @@ class LlamaForCausalLMWarpper(nn.Module):
         labels = labels.to(hidden_states.device)
 
         Fused = FusedCrossEntropyLMhead(self.lm_head.weight)
-        
+
         loss = None
         for i in range(self.mini_s):
 
@@ -257,23 +260,19 @@ class LlamaForCausalLMWarpper(nn.Module):
 
             loss_i = Fused(shift_hidden_states, shift_labels)
 
-            if not torch.isnan(loss_i):
-                if loss is None:
-                    loss = loss_i
-                else:
-                    loss = loss + loss_i
+            if loss is None:
+                loss = loss_i
+            else:
+                loss = loss + loss_i
 
         # if torch.is_nonzero(loss):
         #     loss = loss / torch.sum(torch.ne(labels, -100))
 
-        print(loss, torch.sum(torch.ne(labels, -100)))
         length = torch.sum(torch.ne(labels, -100))
         dist.all_reduce(loss)
         dist.all_reduce(length)
-        print(loss, length, loss / length)
+        
         loss = loss / length
-        print(loss)
-        exit()
 
         return None, loss
 

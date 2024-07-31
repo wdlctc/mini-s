@@ -117,6 +117,8 @@ class _cross_entropy(torch.autograd.Function):
             weights.grad *= dneg_logprobs
             weights.grad_mul = True
         grad_input *= dneg_logprobs
+
+        weights.grad
         
         return grad_input, None, None
 
@@ -187,10 +189,7 @@ class LlamaForCausalLMWarpper(nn.Module):
                     loss = loss + loss_i
             # print(i, loss_i, loss)
 
-        print(loss, torch.sum(torch.ne(labels, -100)))
         loss = loss / torch.sum(torch.ne(labels, -100))
-        print(loss)
-        exit()
         return None, loss
 
     def forward(

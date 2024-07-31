@@ -12,14 +12,28 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, AdamW,
 from transformers import LlamaForCausalLM
 from torch.utils.tensorboard import SummaryWriter
 
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from minis.mini_sequence_distributed import minisequence
+
 def init_random_seed(seed: int):
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
-def main(model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch_size=8, text_column="text",
+def main(rank, world_size, model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch_size=8, text_column="text",
          max_length=4096, lr=1e-3, weight_decay=0.1, num_epochs=1, use_flash_attn=False, torch_dtype=torch.float16, output_dir=""):
     accelerator = Accelerator()
+    
+    RPC_PORT = 29501
+    init_method_pgroup = "tcp://localhost:{}".format(RPC_PORT)
+    torch.distributed.init_process_group(
+        backend="nccl", rank=rank, world_size=world_size, init_method=init_method_pgroup
+    )
+    
+    torch.cuda.set_device(rank)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Initialize TensorBoard writer
     if accelerator.is_main_process:
@@ -32,9 +46,8 @@ def main(model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
         torch_dtype=torch_dtype,
-        use_flash_attention_2=use_flash_attn
+        use_flash_attention_2=True
     )
-    model.gradient_checkpointing_enable()
 
     dataset = DatasetDict()
     
@@ -67,6 +80,10 @@ def main(model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         model.resize_token_embeddings(len(tokenizer))
 
+    
+    model = minisequence(model)
+    model.gradient_checkpointing_enable()
+
     def preprocess_function(examples):
         inputs = examples[text_column]
         targets = examples[label_column]
@@ -93,7 +110,7 @@ def main(model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch
     eval_dataset = processed_datasets["validation"]
 
     train_dataloader = DataLoader(
-        train_dataset, shuffle=True, collate_fn=default_data_collator, batch_size=batch_size, pin_memory=True
+        train_dataset, shuffle=False, collate_fn=default_data_collator, batch_size=batch_size, pin_memory=True
     )
     eval_dataloader = DataLoader(
         eval_dataset, collate_fn=default_data_collator, batch_size=batch_size, pin_memory=True
@@ -116,17 +133,33 @@ def main(model_name_or_path, train_file, valid_file=None, valid_split=0.1, batch
         train_dataloader, eval_dataloader, optimizer, lr_scheduler
     )
 
+    position_ids = torch.arange(
+        0, max_length, device=device
+    ).unsqueeze(0)
+
+    chunk_size = max_length // world_size
+    
     accelerator.print(model)
     
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
         for step, batch in enumerate(tqdm(train_dataloader)):
-            outputs = model(**batch)
+            # print(batch)
+
+
+            batch["labels"] = batch["input_ids"][:, chunk_size*rank+1:chunk_size*(rank + 1)+1].clone()
+            batch["input_ids"] = batch["input_ids"][:, chunk_size*rank:chunk_size*(rank + 1)]
+            
+            outputs = model(**batch, position_ids=position_ids)
             loss = outputs.loss
             total_loss += loss.detach().float()
             accelerator.backward(loss)
+            for p in model.parameters():
+                if p.requires_grad:
+                    dist.all_reduce(p.grad)
             torch.nn.utils.clip_grad_norm_(trainable_params, 1)
+                    
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
@@ -238,18 +271,44 @@ if __name__ == "__main__":
         "fp32": torch.float32,
     }
 
-    main(
-        args.model_name_or_path,
-        args.train_file,
-        args.valid_file,
-        args.valid_split,
-        args.batch_size, 
-        args.text_column,
-        args.max_length,
-        args.learning_rate,
-        args.weight_decay,
-        args.num_epochs,
-        args.use_flash_attn,
-        torch_types[args.torch_dtype],
-        args.output_dir,
+    print(f"Running DP benchmark with args: {args}")
+    num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    print(torch.cuda.device_count())
+    
+    mp.spawn(
+        main,
+        args=(
+            num_devices,
+            args.model_name_or_path,
+            args.train_file,
+            args.valid_file,
+            args.valid_split,
+            args.batch_size, 
+            args.text_column,
+            args.max_length,
+            args.learning_rate,
+            args.weight_decay,
+            args.num_epochs,
+            args.use_flash_attn,
+            torch_types[args.torch_dtype],
+            args.output_dir,
+            ),
+        nprocs=num_devices,
+        join=True,
     )
+    
+    # main(
+    #     args.model_name_or_path,
+    #     args.train_file,
+    #     args.valid_file,
+    #     args.valid_split,
+    #     args.batch_size, 
+    #     args.text_column,
+    #     args.max_length,
+    #     args.learning_rate,
+    #     args.weight_decay,
+    #     args.num_epochs,
+    #     args.use_flash_attn,
+    #     torch_types[args.torch_dtype],
+    #     args.output_dir,
+    # )

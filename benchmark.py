@@ -182,7 +182,7 @@ if __name__ == "__main__":
         "--num_samples", type=int, default=10
     )
     parser.add_argument(
-        "--max_length", type=int, default=160
+        "--max_length", type=int, default=8192
     )
     parser.add_argument("--data_root", type=str, default="data/")
     args = parser.parse_args()

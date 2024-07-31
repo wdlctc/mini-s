@@ -187,10 +187,7 @@ class LlamaForCausalLMWarpper(nn.Module):
                     loss = loss + loss_i
             # print(i, loss_i, loss)
 
-        print(loss, torch.sum(torch.ne(labels, -100)))
         loss = loss / torch.sum(torch.ne(labels, -100))
-        print(loss)
-        exit()
         return None, loss
 
     def forward(
