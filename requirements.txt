@@ -1,0 +1,7 @@
+torch
+transformers
+datasets
+deepspeed
+matplotlib
+accelerate
+tensorboard
