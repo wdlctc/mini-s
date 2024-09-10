@@ -137,6 +137,8 @@ def main(args):
         0, args.max_length, device=device
     ).unsqueeze(0)
     
+    input_ids = torch.randint(low=3, high=10000, size=(1, args.max_length), device="cuda")
+    
     for epoch in range(num_epochs):
         start_time = time.time()
         model.train()
@@ -144,11 +146,13 @@ def main(args):
     
         for batch in dataloader:
             
-            batch = {k: v.to(device) for k, v in batch.items()}
-            labels = batch["input_ids"].clone()
+            # batch = {k: v.to(device) for k, v in batch.items()}
+            labels = input_ids.clone()
             labels[labels == pad_idx] = -100
 
-            outputs = model(**batch, labels=labels)
+            print(labels)
+
+            outputs = model(input_ids=input_ids, labels=labels)
             loss = outputs.loss
             loss.backward()
             total_loss += loss.item()

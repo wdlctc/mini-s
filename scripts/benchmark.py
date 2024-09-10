@@ -140,6 +140,7 @@ def main(args):
             labels = batch["input_ids"].clone()
             labels[labels == pad_idx] = -100
 
+
             outputs = model(**batch, labels=labels)
             loss = outputs.loss
             loss.backward()

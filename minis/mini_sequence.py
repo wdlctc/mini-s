@@ -140,7 +140,7 @@ class LlamaForCausalLMWarpper(nn.Module):
     def __init__(
         self,
         module,
-        mini_s = 16
+        mini_s = 64
     ):
         super().__init__()
         self.model = module.model
@@ -177,11 +177,11 @@ class LlamaForCausalLMWarpper(nn.Module):
 
             loss_i = LMhead(shift_hidden_states, shift_labels)
 
-            if not torch.isnan(loss_i):
-                if loss is None:
-                    loss = loss_i
-                else:
-                    loss = loss + loss_i
+            # if not torch.isnan(loss_i):
+            if loss is None:
+                loss = loss_i
+            else:
+                loss = loss + loss_i
             # print(i, loss_i, loss)
 
         loss = loss / torch.sum(torch.ne(labels, -100))
@@ -278,6 +278,7 @@ class minisequence(nn.Module):
         self.module = module
         
         self.RecursiveVisit('module', self.module, self)
+        self.gradient_checkpointing_enable()
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.module.gradient_checkpointing_enable(gradient_checkpointing_kwargs)

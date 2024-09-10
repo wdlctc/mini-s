@@ -12,6 +12,7 @@ This repository provides an overview of all resources for the paper ["MINI-SEQUE
 - [Overview](#overview)
 - [Artifacts](#artifacts)
 - [Features](#features)
+- [Benchmar](#benchmark)
 - [Finetune](#finetune)
 - [News](#news)
 - [Contributing](#citation)
@@ -36,6 +37,53 @@ We believe that our work opens new avenues for long-sequence training of LLMs, a
 - 🏎️ Maintains the same training throughput as standard implementations
 - 🛠️ Fully general and implementation-agnostic, supporting most parameter-efficient training methods
 - 🔌 Easy to integrate into existing training frameworks with minimal code changes
+
+### Benchmark
+Install the mini-sequence warpper `pip install -e .` and run:
+
+
+```python
+import torch
+import os
+import time
+
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from torch.optim import AdamW
+from minis.mini_sequence import minisequence
+
+name_or_path = "meta-llama/Meta-Llama-3-8B"
+model = AutoModelForCausalLM.from_pretrained(name_or_path,
+        _attn_implementation="flash_attention_2",
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+    ).cuda()
+model.train()
+model = minisequence(model)
+
+optimizer = AdamW(model.parameters(), lr=5e-5)
+
+SEQ_LEN = 8192
+input_ids = torch.randint(low=3, high=10000, size=(1, SEQ_LEN), device="cuda")
+
+torch.cuda.synchronize()
+t1 = time.perf_counter()
+for _ in range(3):
+    loss = model(input_ids=input_ids, labels=input_ids).loss
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+torch.cuda.synchronize()
+t2 = time.perf_counter()
+print("Pretrains throughput {} token/s".format((SEQ_LEN/((t2 - t1)/3))))
+
+
+print(
+    "Peak allocated bytes on {:4f}GB".format(
+        torch.cuda.memory_stats(0)["allocated_bytes.all.peak"] / 2**30
+    )
+)
+```
+You can try running with/without mini-sequence warpper using [code]https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark_minis.ipynb and [code]https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark.ipynb.
 
 ### Finetune/Pretrain
 

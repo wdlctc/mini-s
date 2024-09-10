@@ -24,8 +24,6 @@ def load(model_name):
         else:
             tokenizer.pad_token_id = 0
 
-    model.eval()
-
     return model, tokenizer
 
 def load_data(dataset_name, tokenizer):
