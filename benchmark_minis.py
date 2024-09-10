@@ -91,6 +91,7 @@ def main(args):
     
     # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
     def optimizer_hook(parameter) -> None:
+        print(parameter.grad.shape)
         optimizer_dict[parameter].step()
         optimizer_dict[parameter].zero_grad()
     
