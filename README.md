@@ -1,108 +1,105 @@
 # MINI-SEQUENCE TRANSFORMER (MST)
 
-## Overview
+<div align="center">
+  <img src="./doc/img/central_mst_logo.png" width="400" />
+  <h2>Highly Efficient and Accurate LLM Training with Extremely Long Sequences</h2>
+</div>
+
+![](./doc/img/mst.png)
+
+This repository provides an overview of all resources for the paper ["MINI-SEQUENCE TRANSFORMER: Optimizing Intermediate Memory for Long Sequences Training"](https://www.arxiv.org/abs/2407.15892).
+
+- [Overview](#overview)
+- [Artifacts](#artifacts)
+- [Features](#features)
+- [Finetune](#finetune)
+- [News](#news)
+- [Contributing](#citation)
+- [Citation](#citation)
+- [License](#license)
+
+### Overview
 
 MINI-SEQUENCE TRANSFORMER (MST) is a simple and effective method for highly efficient and accurate LLM training with extremely long sequences. Our research demonstrates that the Llama3-8B model can be trained with context lengths up to 60k tokens on a single NVIDIA A100 GPU with 80GB memory, representing a 12x increase in maximum sequence length compared to standard implementations.
 
 We believe that our work opens new avenues for long-sequence training of LLMs, and reduces the hardware obstacles for researchers and developers aiming to create LLMs with long context.
 
-![mst](./doc/img/mst.png)
+### Artifacts
 
-## Key Features
+- **Paper**: https://www.arxiv.org/abs/2407.15892
+- **HuggingFace** [Code](https://github.com/wdlctc/transformers). [Doc] (https://github.com/wdlctc/peft_minis)
+- **SFT (Supervised Fine-Tuning)** [Code](https://github.com/wdlctc/peft_minis), [Doc].
 
-- Enables training Llama3-8B with 60k token sequences on a single A100 GPU (4x longer than activation recomputation alone)
-- Maintains the same training throughput as standard implementations
-- Fully general and implementation-agnostic, supporting most parameter-efficient training methods
-- Easy to integrate into existing training frameworks with minimal code changes
+### Features
 
-## NEWS
+- 🚀 Enables training Llama3-8B with 60k token sequences on a single A100 GPU (4x longer than activation recomputation alone)
+- 🏎️ Maintains the same training throughput as standard implementations
+- 🛠️ Fully general and implementation-agnostic, supporting most parameter-efficient training methods
+- 🔌 Easy to integrate into existing training frameworks with minimal code changes
 
-- [7/26/2024] Our work can be directly deployed for LLAMA 3.1, take benchmark_replace_llama3_1.py as an example to see how it works.
-- [8/11/2024] We've added MST support for QWEN, Gemma2, and Mistral models. You can find the implementation on our [transformers fork](https://github.com/wdlctc/transformers).
+### Finetune/Pretrain
 
-## Installation
+Follow these steps to set up your environment:
 
-To install and run the mini-s model, follow these steps:
-
-1. Clone the repository:
-
-   ```
-   git clone https://github.com/wdlctc/mini-s.git
-   cd mini-s
+1. Deploy the mini-sequence version of Hugging Face Transformers:
+   ```bash
+   pip install -U git+https://github.com/wdlctc/transformers
    ```
 
-2. Install the required dependencies:
-
-   ```
+2. Clone the LongLoRA repository and install dependencies:
+   ```bash
+   git clone https://github.com/dvlab-research/LongLoRA
+   cd LongLoRA
    pip install -r requirements.txt
-   ```
-
-3. Install the `flash-attn` package:
-
-   ```
    pip install flash-attn --no-build-isolation
    ```
 
-Note: The `--no-build-isolation` flag is used to avoid potential build conflicts.
-
-## Usage
-
-To run the benchmark script and evaluate the performance of the mini-s model, use the following one-click-run command:
-   ```
-   python benchmark_replace.py
-   ```
-This file contains the modifications made to the original model to create the mini-s version.
-
-## No Code Change Run
-
-To run the original code without any modifications (sfttrainer for example), follow these steps:
-
-1. Clone the transformer-mini-s repository:
-
-   ```
-   git clone https://github.com/wdlctc/transformers.git
-   cd transformers
+3. Before running the fine-tuning script, set an environment variable to clean memory fragments:
+   ```bash
+   export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:64"
    ```
 
-2. Install the transformer with mini-s:
-
+4. Now, run the fine-tuning script:
+   ```bash
+   python fine-tune.py  \
+    --model_name_or_path meta-llama/Meta-Llama-3.1-8B \
+    --bf16 True \
+    --output_dir path_to_saving_checkpoints \
+    --cache_dir path_to_cache \
+    --model_max_length 32768 \
+    --use_flash_attn True \
+    --low_rank_training False \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --evaluation_strategy "no" \
+    --save_strategy "steps" \
+    --save_steps 1000 \
+    --save_total_limit 2 \
+    --learning_rate 2e-5 \
+    --weight_decay 0.0 \
+    --warmup_steps 20 \
+    --lr_scheduler_type "constant_with_warmup" \
+    --logging_steps 1 \
+    --low_rank_training False \
+    --max_steps 1000
    ```
-   pip install -e .
-   ```
+This script demonstrates how mini-sequence allows us to fine-tune the Llama 3 model with a context length of 32,768 tokens - a feat that would be challenging or impossible with standard training methods on single A100 GPU.
 
-this will execute the original benchmark script using mini-s enable.
+### News
 
-## Example of mini-s Work with Performance/SFT Training
-For an example of mini-s model work with performance and SFT (Soft Finetuning) training, refer to the repository https://github.com/wdlctc/peft_minis.
+- [8/11/2024] We've added MST support for QWEN, Gemma2, and Mistral models. You can find the implementation on our [transformers fork](https://github.com/wdlctc/transformers).
+- [7/26/2024] Our work can be directly deployed for LLAMA 3.1, take benchmark_replace_llama3_1.py as an example to see how it works.
 
-## How It Works
 
-MST partitions input sequences and iteratively processes mini-sequences to reduce intermediate memory usage. When integrated with activation recomputation, this allows for significant memory savings in both forward and backward passes.
-
-## Benefits
-
-MST opens up new possibilities for training LLMs on long sequences using limited hardware resources:
-
-- Enables efficient training on much longer sequences
-- Improves LLM capabilities across tasks that benefit from extended context, like long document summarization and multi-turn dialogue
-- Requires no changes to model architecture, making it broadly applicable to a wide range of existing and future transformer models
-
-## Experimental Results
-
-We evaluated MST on popular models like Llama3-8B and Llama2-7B. In our experiments, we observed:
-
-- No degradation in convergence or throughput even with 12x longer sequences compared to standard implementations
-- Llama3-8B can be trained with context lengths up to 60k tokens on a single NVIDIA A100 GPU
-- Llama2-7B can be trained with context lengths up to 84k tokens on a single NVIDIA A100 GPU
-
-## Contributing
+### Contributing
 
 We welcome contributions to the MST project. If you're interested in collaborating on MST research or have questions about our work, please open an issue or submit a pull request.
 
-## Citing Mini-s
+### Citation
 
-If you use minis in your publication, please cite it by using the following BibTeX entry.
-
+If you use minis in your publication, please cite it by using the following BibTeX entry:
 
 ```BibTeX
 @misc{luo2024mst,
@@ -115,12 +112,10 @@ If you use minis in your publication, please cite it by using the following BibT
 }
 ```
 
-## License
+### License
 
-MsT refers [huggingface/transformers](https://github.com/huggingface/transformers), Copyright 2018- The Hugging Face team, licensed under [Apache License](http://www.apache.org/licenses/LICENSE-2.0).
+MST refers to [huggingface/transformers](https://github.com/huggingface/transformers), Copyright 2018- The Hugging Face team, licensed under [Apache License](http://www.apache.org/licenses/LICENSE-2.0).
 
-This project is licensed under, MIT License.
-
-## Contact
+This project is licensed under the MIT License.
 
 For any inquiries, please contact wdlctc@gmail.com.
