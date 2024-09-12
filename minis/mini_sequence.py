@@ -73,6 +73,8 @@ class _LM_head(torch.autograd.Function):
         logits = F.linear(hidden_states, weights).float()
         loss_fct = torch.nn.CrossEntropyLoss(reduction="sum")
         loss_i = loss_fct(logits, indices)
+        
+        weights.count += 1
 
         ctx.save_for_backward(hidden_states, indices, weights)
         
@@ -85,22 +87,28 @@ class _LM_head(torch.autograd.Function):
         to get p[k], which is most of what we need...  neg_logprobs will be
         modified in place to become the gradient we want
         """
+        
         # load saved tensors
         hidden_states, indices, weights = ctx.saved_tensors
-
-        logits = F.linear(hidden_states, weights).float()
+        weights.count -= 1
 
         ignore_index = -100
         mask = indices != ignore_index
         reverse_mask = indices == ignore_index
-        
-        batch_size = torch.sum(indices != ignore_index)
+
+        if not mask.any():
+            # If all indices are -100, return zero gradients
+            return torch.zeros_like(hidden_states), None, None
+
+        logits = F.linear(hidden_states, weights).float()
 
         grad_input = F.softmax(logits, dim=-1)
         grad_input[mask, indices[mask]] -= 1
         # grad_input[mask] /= batch_size
         grad_input[reverse_mask] = 0
+        grad_input *= dneg_logprobs
         grad_input = grad_input.to(hidden_states.dtype)
+        
         if hasattr(weights, 'grad') and weights.grad != None:
             torch.addmm(
                     weights.grad,
@@ -110,13 +118,14 @@ class _LM_head(torch.autograd.Function):
                 )
         else:
             weights.grad = grad_input.T @ hidden_states
-            
+
+        logits = None
         grad_input = grad_input @ weights
 
-        weights.grad *= dneg_logprobs
-        grad_input *= dneg_logprobs
-        
-        return grad_input, None, None
+        if weights.count == 0:
+            return grad_input, None, weights.grad
+        else:
+            return grad_input, None, None
 
 
 class LMheadWarpper(nn.Module):
@@ -130,6 +139,7 @@ class LMheadWarpper(nn.Module):
         else:
             self.LM_head_weight = original_weight
         self.LM_head = _LM_head.apply
+        self.LM_head_weight.count = 0
 
     def forward(self, hidden_states, labels):
         ignore_index = -100
@@ -140,7 +150,7 @@ class LlamaForCausalLMWarpper(nn.Module):
     def __init__(
         self,
         module,
-        mini_s = 16
+        mini_s = 64
     ):
         super().__init__()
         self.model = module.model
@@ -177,11 +187,11 @@ class LlamaForCausalLMWarpper(nn.Module):
 
             loss_i = LMhead(shift_hidden_states, shift_labels)
 
-            if not torch.isnan(loss_i):
-                if loss is None:
-                    loss = loss_i
-                else:
-                    loss = loss + loss_i
+            # if not torch.isnan(loss_i):
+            if loss is None:
+                loss = loss_i
+            else:
+                loss = loss + loss_i
             # print(i, loss_i, loss)
 
         loss = loss / torch.sum(torch.ne(labels, -100))
@@ -278,6 +288,7 @@ class minisequence(nn.Module):
         self.module = module
         
         self.RecursiveVisit('module', self.module, self)
+        self.gradient_checkpointing_enable()
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.module.gradient_checkpointing_enable(gradient_checkpointing_kwargs)

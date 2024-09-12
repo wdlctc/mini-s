@@ -5,7 +5,6 @@ import time
 import tempfile
 
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 from torch.optim import AdamW
@@ -13,17 +12,12 @@ from torch.optim import AdamW
 from utils import load, load_jsonl, load_data
 from datasets import load_dataset, load_from_disk
 
-import transformers
 from transformers import TrainingArguments, TextDataset, DataCollatorForLanguageModeling
 
 import numpy as np
 import copy
-import math
 
 from torch.utils.data import IterableDataset, DataLoader
-
-from minis.mini_sequence import minisequence
-
 class PreprocessedIterableDataset(IterableDataset):
     def __init__(self, data, tokenizer, batch_size, max_length):
         super().__init__()
@@ -67,7 +61,6 @@ class PreprocessedIterableDataset(IterableDataset):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
-
 def main(args):
     # Specify the pretrained model name or path
     model_name = args.model_name
@@ -81,7 +74,6 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    model = minisequence(model)
     model.gradient_checkpointing_enable()
     # optimizer = AdamW(model.parameters(), lr=5e-5)
 
@@ -147,6 +139,7 @@ def main(args):
             batch = {k: v.to(device) for k, v in batch.items()}
             labels = batch["input_ids"].clone()
             labels[labels == pad_idx] = -100
+
 
             outputs = model(**batch, labels=labels)
             loss = outputs.loss

@@ -5,6 +5,7 @@ import time
 import tempfile
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 from torch.optim import AdamW
@@ -12,12 +13,17 @@ from torch.optim import AdamW
 from utils import load, load_jsonl, load_data
 from datasets import load_dataset, load_from_disk
 
+import transformers
 from transformers import TrainingArguments, TextDataset, DataCollatorForLanguageModeling
 
 import numpy as np
 import copy
+import math
 
 from torch.utils.data import IterableDataset, DataLoader
+
+from minis.mini_sequence import minisequence
+
 class PreprocessedIterableDataset(IterableDataset):
     def __init__(self, data, tokenizer, batch_size, max_length):
         super().__init__()
@@ -61,6 +67,7 @@ class PreprocessedIterableDataset(IterableDataset):
 
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
+
 def main(args):
     # Specify the pretrained model name or path
     model_name = args.model_name
@@ -74,17 +81,32 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
+    model = minisequence(model)
     model.gradient_checkpointing_enable()
     # optimizer = AdamW(model.parameters(), lr=5e-5)
 
     # Instead of having just *one* optimizer, we will have a ``dict`` of optimizers
     # for every parameter so we could reference them in our hook.
     optimizer_dict = {p: torch.optim.Adam([p], foreach=False) for p in model.parameters()}
+
+    # Delay optimizer.step() in lm_head to reduce peak memory
+    model.module.lm_head.weight.later = True
+    model.module.model.embed_tokens.weight.recall = model.module.lm_head.weight
     
     # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
     def optimizer_hook(parameter) -> None:
+        
+        if hasattr(parameter, "later"):
+            return
+            
         optimizer_dict[parameter].step()
         optimizer_dict[parameter].zero_grad()
+
+    
+        if hasattr(parameter, "recall"):
+            parameter = parameter.recall
+            optimizer_dict[parameter].step()
+            optimizer_dict[parameter].zero_grad()
     
     # Register the hook onto every parameter
     for p in model.parameters():

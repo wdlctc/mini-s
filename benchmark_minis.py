@@ -91,6 +91,7 @@ def main(args):
     
     # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
     def optimizer_hook(parameter) -> None:
+        print(parameter.grad.shape)
         optimizer_dict[parameter].step()
         optimizer_dict[parameter].zero_grad()
     
@@ -171,7 +172,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_name", type=str, default="meta-llama/Meta-Llama-3.1-8B"
+        "--model_name", type=str, default="meta-llama/Meta-Llama-3-8B"
     )
     parser.add_argument(
         "--dataset_name", type=str, default="yelp_review_full"
