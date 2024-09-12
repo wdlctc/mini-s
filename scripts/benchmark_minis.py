@@ -88,11 +88,25 @@ def main(args):
     # Instead of having just *one* optimizer, we will have a ``dict`` of optimizers
     # for every parameter so we could reference them in our hook.
     optimizer_dict = {p: torch.optim.Adam([p], foreach=False) for p in model.parameters()}
+
+    # Delay optimizer.step() in lm_head to reduce peak memory
+    model.module.lm_head.weight.later = True
+    model.module.model.embed_tokens.weight.recall = model.module.lm_head.weight
     
     # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
     def optimizer_hook(parameter) -> None:
+        
+        if hasattr(parameter, "later"):
+            return
+            
         optimizer_dict[parameter].step()
         optimizer_dict[parameter].zero_grad()
+
+    
+        if hasattr(parameter, "recall"):
+            parameter = parameter.recall
+            optimizer_dict[parameter].step()
+            optimizer_dict[parameter].zero_grad()
     
     # Register the hook onto every parameter
     for p in model.parameters():
