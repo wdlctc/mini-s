@@ -28,8 +28,8 @@ We believe that our work opens new avenues for long-sequence training of LLMs, a
 ### Artifacts
 
 - **Paper**: https://www.arxiv.org/abs/2407.15892
-- **HuggingFace** [Code](https://github.com/wdlctc/transformers). [Doc] (https://github.com/wdlctc/peft_minis)
-- **SFT (Supervised Fine-Tuning)** [Code](https://github.com/wdlctc/peft_minis), [Doc].
+- **HuggingFace with MST** [Code](https://github.com/wdlctc/transformers).
+- **Model Finetune Guidence** [LLAMA3](https://github.com/wdlctc/mini-s/doc/llama3.md), [Qwen2](https://github.com/wdlctc/mini-s/doc/qwen.md), [Memba](https://github.com/wdlctc/mini-s/doc/falcon-mamba.md), [Mistral](https://github.com/wdlctc/mini-s/doc/mistral.md), [Gemma2](https://github.com/wdlctc/mini-s/doc/gemma.md) 
 
 ### Features
 
@@ -83,7 +83,7 @@ print(
     )
 )
 ```
-You can try running with/without mini-sequence warpper using [code]https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark_minis.ipynb and [code]https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark.ipynb.
+You can try running with/without mini-sequence warpper using [benchmark with MST](https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark_minis.ipynb) and [benchmark without MST](https://github.com/wdlctc/mini-s/tree/main/scripts/benchmark.ipynb).
 
 ### Finetune/Pretrain
 
