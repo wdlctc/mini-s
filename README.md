@@ -29,7 +29,7 @@ We believe that our work opens new avenues for long-sequence training of LLMs, a
 
 - **Paper**: https://www.arxiv.org/abs/2407.15892
 - **HuggingFace with MST** [Code](https://github.com/wdlctc/transformers).
-- **Model Finetune Guidence** [LLAMA3](https://github.com/wdlctc/mini-s/doc/llama3.md), [Qwen2](https://github.com/wdlctc/mini-s/doc/qwen.md), [Memba](https://github.com/wdlctc/mini-s/doc/falcon-mamba.md), [Mistral](https://github.com/wdlctc/mini-s/doc/mistral.md), [Gemma2](https://github.com/wdlctc/mini-s/doc/gemma.md) 
+- **Model Finetune Guidence** [LLAMA3](https://github.com/wdlctc/mini-s/tree/doc/llama3.md), [Qwen2](https://github.com/wdlctc/mini-s/tree/doc/qwen.md), [Memba](https://github.com/wdlctc/mini-s/tree/doc/falcon-mamba.md), [Mistral](https://github.com/wdlctc/mini-s/tree/doc/mistral.md), [Gemma2](https://github.com/wdlctc/mini-s/tree/doc/gemma.md) 
 
 ### Features
 
