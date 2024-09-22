@@ -36,7 +36,7 @@ class LlamaMLPWarpper(nn.Module):
         bsz, q_len, _ = x.size()
 
         if self.chunk_mode:
-            chunk_size = self.chunk_size
+            chunk_size = max(self.chunk_size // bsz, 1024)
         else:
             chunk_size = math.ceil(q_len / self.mini_s)
         
