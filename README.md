@@ -138,6 +138,7 @@ This script demonstrates how mini-sequence allows us to fine-tune the Llama 3 mo
 
 ### News
 
+- [9/28/2024] MST now supports unsloth backend. Check our developing repo for more details [unsloth fork](https://github.com/wdlctc/unsloth)
 - [8/11/2024] We've added MST support for QWEN, Gemma2, and Mistral models. You can find the implementation on our [transformers fork](https://github.com/wdlctc/transformers).
 - [7/26/2024] Our work can be directly deployed for LLAMA 3.1, take benchmark_replace_llama3_1.py as an example to see how it works.
 
